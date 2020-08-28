@@ -120,7 +120,7 @@ fn project_game_count(current: usize, event: &GameCreated) -> usize {
     current + 1
 }
 /*********************************************/
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct Player {
     name: String,
     token: Token,
@@ -258,8 +258,27 @@ fn test_position_translation() {
     }
 }
 
+#[test]
+fn test_no_winner_empty_board() {
+    let player1 = Player {
+        token: Token::Red,
+        name: "1".to_string(),
+    };
+
+    let player2 = Player {
+        token: Token::Yellow,
+        name: "2".to_string(),
+    };
+
+    debug_assert_eq!(None, check_game_over(&empty_board(), &player1, &player2));
+}
+
 fn main() {
     let board: Board = empty_board();
+
+    for pos in BOARD_POSITIONS.iter() {
+        println!("({}, {})", pos.x, pos.y);
+    }
 
     println!("Hello, world!");
 }

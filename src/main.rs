@@ -1,13 +1,12 @@
+#![allow(dead_code)]
 #[macro_use]
 extern crate serde_derive;
 
-use serde::{ Serialize, Deserialize };
 use chrono::{DateTime, Utc};
 
 const HORIZONTAL_SLOT_COUNT: usize = 7;
 const VERTICAL_SLOT_COUNT: usize = 6;
 const SLOT_COUNT: usize = HORIZONTAL_SLOT_COUNT * VERTICAL_SLOT_COUNT;
-const BOARD_POSITIONS: [Position; SLOT_COUNT] = board_positions();
 
 type Column = usize;
 type GameId = usize;
@@ -38,6 +37,7 @@ struct PlaceToken {
     player: Player,
     column: usize,
 }
+
 /*********************************************/
 
 /*********************************************/
@@ -56,7 +56,7 @@ fn is_valid_move(board: &Board, action: PlaceToken) -> bool {
 }
 
 fn check_game_over<'a>(board: &Board, player1: &'a Player, player2: &'a Player) -> Option<&'a Player> {
-    for pos in BOARD_POSITIONS.iter() {
+    for pos in board_positions().iter() {
         let slot = board[pos.translate()];
 
         match slot {
@@ -80,7 +80,7 @@ fn check_game_over<'a>(board: &Board, player1: &'a Player, player2: &'a Player) 
                         board[pos.add_x(3).add_y(3).translate()] == slot;
 
                 let on_up_left_line =
-                    pos.x - 3 >= 0 &&
+                    pos.x >= 3 &&
                         board[pos.sub_x(1).add_y(1).translate()] == slot &&
                         board[pos.sub_x(2).add_y(2).translate()] == slot &&
                         board[pos.sub_x(3).add_y(3).translate()] == slot;
@@ -105,18 +105,22 @@ fn check_game_over<'a>(board: &Board, player1: &'a Player, player2: &'a Player) 
 fn project_board(boards: &mut Board, event: &TokenPlaced) {
     for pos in column_positions(event.column).iter() {
         let idx = pos.translate();
-        boards[idx] = Slot::Occupied(event.token);
+
+        if let Slot::Empty = boards[idx] {
+            boards[idx] = Slot::Occupied(event.token);
+            break;
+        }
     }
 }
 
-fn project_next_color_to_play(current: Token, event: &TokenPlaced) -> Token {
+fn project_next_color_to_play(current: Token, _event: &TokenPlaced) -> Token {
     match current {
         Token::Red => Token::Yellow,
         Token::Yellow => Token::Red,
     }
 }
 
-fn project_game_count(current: usize, event: &GameCreated) -> usize {
+fn project_game_count(current: usize, _event: &GameCreated) -> usize {
     current + 1
 }
 /*********************************************/
@@ -135,6 +139,13 @@ struct Position {
 impl Position {
     pub fn translate(&self) -> usize {
         self.x + HORIZONTAL_SLOT_COUNT * self.y
+    }
+
+    pub fn from_coord(x: usize, y: usize) -> Self {
+        Position {
+            x,
+            y,
+        }
     }
 
     pub fn from_index(idx: usize) -> Self {
@@ -212,28 +223,23 @@ const fn empty_board() -> Board {
     [Slot::Empty; SLOT_COUNT]
 }
 
-const fn board_positions() -> [Position; SLOT_COUNT] {
+fn board_positions() -> [Position; SLOT_COUNT] {
     let init_pos = Position {
         x: 0,
         y: 0,
     };
 
     let mut positions = [init_pos; SLOT_COUNT];
-    let mut idx = 0usize;
-    let mut x = 0usize;
 
-    while x < HORIZONTAL_SLOT_COUNT {
-        let mut y = 0usize;
-        while y < VERTICAL_SLOT_COUNT {
-            positions[idx] = Position {
+    for x in  0..HORIZONTAL_SLOT_COUNT {
+        for y in 0..VERTICAL_SLOT_COUNT {
+            let pos = Position {
                 x,
                 y,
             };
 
-            idx += 1;
-            y += 1;
+            positions[pos.translate()] = pos;
         }
-        x += 1;
     }
 
     positions
@@ -241,11 +247,9 @@ const fn board_positions() -> [Position; SLOT_COUNT] {
 
 fn column_positions(x: Column) -> [Position; VERTICAL_SLOT_COUNT] {
     let mut indexes = [Position { x: 0, y: 0 }; VERTICAL_SLOT_COUNT];
-    let mut y = 0;
 
-    while y < VERTICAL_SLOT_COUNT {
+    for y in 0..VERTICAL_SLOT_COUNT {
         indexes[y] = Position {x, y};
-        y += 1;
     }
 
     indexes
@@ -253,8 +257,26 @@ fn column_positions(x: Column) -> [Position; VERTICAL_SLOT_COUNT] {
 
 #[test]
 fn test_position_translation() {
-    for pos in BOARD_POSITIONS.iter() {
+    for pos in board_positions().iter() {
         debug_assert_eq!(pos, &Position::from_index(pos.translate()));
+    }
+}
+
+#[test]
+fn test_check_position_translate_idx() {
+    let mut board = empty_board();
+    for pos in board_positions().iter() {
+        board[pos.translate()] = Slot::Occupied(Token::Red);
+    }
+}
+
+#[test]
+fn test_check_column_position_translate_idx() {
+    let mut board = empty_board();
+    for column in 0..HORIZONTAL_SLOT_COUNT {
+        for pos in column_positions(column).iter() {
+            board[pos.translate()] = Slot::Occupied(Token::Red);
+        }
     }
 }
 
@@ -273,10 +295,49 @@ fn test_no_winner_empty_board() {
     debug_assert_eq!(None, check_game_over(&empty_board(), &player1, &player2));
 }
 
-fn main() {
-    let board: Board = empty_board();
+#[test]
+fn test_detect_win_condition() {
+    let mut events = Vec::new();
 
-    for pos in BOARD_POSITIONS.iter() {
+    for column in 0..4 {
+        events.push(TokenPlaced {
+           token: Token::Red,
+            column,
+            created: Utc::now(),
+        });
+
+        if column != 3 {
+            events.push(TokenPlaced {
+                token: Token::Yellow,
+                column,
+                created: Utc::now(),
+            });
+        }
+    }
+
+    let mut board = empty_board();
+    let player1 = Player {
+        token: Token::Red,
+        name: "1".to_string(),
+    };
+
+    let player2 = Player {
+        token: Token::Yellow,
+        name: "2".to_string(),
+    };
+
+    for event in events.iter() {
+        project_board(&mut board, event);
+    }
+
+    debug_assert_eq!(Some(&player1), check_game_over(&board, &player1, &player2));
+}
+
+fn main() {
+    let _board: Board = empty_board();
+    let _events: Vec<TokenPlaced> = Vec::new();
+
+    for pos in board_positions().iter() {
         println!("({}, {})", pos.x, pos.y);
     }
 

@@ -3,6 +3,7 @@
 extern crate serde_derive;
 
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 
 const HORIZONTAL_SLOT_COUNT: usize = 7;
 const VERTICAL_SLOT_COUNT: usize = 6;
@@ -15,7 +16,14 @@ type GameId = usize;
 /*** Events                                  */
 /*********************************************/
 #[derive(Clone, Debug, Serialize, Deserialize)]
+enum GameEvents {
+    GameCreated(GameCreated),
+    TokenPlaced(TokenPlaced),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct GameCreated {
+    id: GameId,
     player1: Player,
     player2: Player,
     created: DateTime<Utc>,
@@ -23,6 +31,7 @@ struct GameCreated {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct TokenPlaced {
+    game: GameId,
     token: Token,
     column: usize,
     created: DateTime<Utc>,
@@ -32,12 +41,16 @@ struct TokenPlaced {
 /*********************************************/
 /*** Commands                                */
 /*********************************************/
+struct CreateGame {
+    player1: Player,
+    player2: Player,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PlaceToken {
     player: Player,
     column: usize,
 }
-
 /*********************************************/
 
 /*********************************************/
@@ -55,37 +68,54 @@ fn is_valid_move(board: &Board, action: PlaceToken) -> bool {
     false
 }
 
-fn check_game_over<'a>(board: &Board, player1: &'a Player, player2: &'a Player) -> Option<&'a Player> {
+fn can_create_game(games: &Games, command: CreateGame) -> bool {
+    for game in games.values() {
+        if game.player1.name == command.player1.name
+            || game.player1.name == command.player2.name
+            || game.player2.name == command.player1.name
+            || game.player2.name == command.player2.name
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn check_game_over<'a>(
+    board: &Board,
+    player1: &'a Player,
+    player2: &'a Player,
+) -> Option<&'a Player> {
     for pos in board_positions().iter() {
         let slot = board[pos.translate()];
 
         match slot {
             Slot::Empty => continue,
             Slot::Occupied(token) => {
-                let on_right_line =
-                    pos.x + 3 < HORIZONTAL_SLOT_COUNT &&
-                        board[pos.add_x(1).translate()] == slot &&
-                        board[pos.add_x(2).translate()] == slot &&
-                        board[pos.add_x(3).translate()] == slot;
+                let on_right_line = pos.x + 3 < HORIZONTAL_SLOT_COUNT
+                    && board[pos.add_x(1).translate()] == slot
+                    && board[pos.add_x(2).translate()] == slot
+                    && board[pos.add_x(3).translate()] == slot;
 
-                let on_top_line =
-                    board[pos.add_y(1).translate()] == slot &&
-                        board[pos.add_y(2).translate()] == slot &&
-                        board[pos.add_y(3).translate()] == slot;
+                let on_top_line = board[pos.add_y(1).translate()] == slot
+                    && board[pos.add_y(2).translate()] == slot
+                    && board[pos.add_y(3).translate()] == slot;
 
-                let on_up_right_line =
-                    pos.x + 3 < HORIZONTAL_SLOT_COUNT &&
-                        board[pos.add_x(1).add_y(1).translate()] == slot &&
-                        board[pos.add_x(2).add_y(2).translate()] == slot &&
-                        board[pos.add_x(3).add_y(3).translate()] == slot;
+                let on_up_right_line = pos.x + 3 < HORIZONTAL_SLOT_COUNT
+                    && board[pos.add_x(1).add_y(1).translate()] == slot
+                    && board[pos.add_x(2).add_y(2).translate()] == slot
+                    && board[pos.add_x(3).add_y(3).translate()] == slot;
 
-                let on_up_left_line =
-                    pos.x >= 3 &&
-                        board[pos.sub_x(1).add_y(1).translate()] == slot &&
-                        board[pos.sub_x(2).add_y(2).translate()] == slot &&
-                        board[pos.sub_x(3).add_y(3).translate()] == slot;
+                let on_up_left_line = pos.x >= 3
+                    && board[pos.sub_x(1).add_y(1).translate()] == slot
+                    && board[pos.sub_x(2).add_y(2).translate()] == slot
+                    && board[pos.sub_x(3).add_y(3).translate()] == slot;
 
-                if on_right_line || (pos.y + 3 < VERTICAL_SLOT_COUNT && (on_top_line || on_up_right_line || on_up_left_line)) {
+                if on_right_line
+                    || (pos.y + 3 < VERTICAL_SLOT_COUNT
+                        && (on_top_line || on_up_right_line || on_up_left_line))
+                {
                     if player1.token == token {
                         return Some(player1);
                     } else {
@@ -102,6 +132,27 @@ fn check_game_over<'a>(board: &Board, player1: &'a Player, player2: &'a Player) 
 /*********************************************/
 /*** Projections                             */
 /*********************************************/
+fn project_all_games(games: &mut Games, event: &GameEvents) {
+    match event {
+        GameEvents::GameCreated(event) => {
+            let game = Game {
+                id: event.id,
+                player1: event.player1.clone(),
+                player2: event.player2.clone(),
+                board: empty_board(),
+            };
+
+            games.insert(event.id, game);
+        }
+
+        GameEvents::TokenPlaced(event) => {
+            if let Some(game) = games.get_mut(&event.game) {
+                project_board(&mut game.board, event)
+            }
+        }
+    }
+}
+
 fn project_board(boards: &mut Board, event: &TokenPlaced) {
     for pos in column_positions(event.column).iter() {
         let idx = pos.translate();
@@ -142,10 +193,7 @@ impl Position {
     }
 
     pub fn from_coord(x: usize, y: usize) -> Self {
-        Position {
-            x,
-            y,
-        }
+        Position { x, y }
     }
 
     pub fn from_index(idx: usize) -> Self {
@@ -161,10 +209,7 @@ impl Position {
             y += 1;
         }
 
-        Position {
-            x,
-            y,
-        }
+        Position { x, y }
     }
 
     pub fn add_x(self, i: usize) -> Self {
@@ -219,24 +264,34 @@ impl Slot {
 
 type Board = [Slot; SLOT_COUNT];
 
+enum GameStatus {
+    Ongoing,
+    Terminated,
+}
+
+struct Game {
+    id: GameId,
+    player1: Player,
+    player2: Player,
+    board: Board,
+}
+
+type GameStatues = HashMap<GameId, GameStatus>;
+type Boards = HashMap<GameId, Board>;
+type Games = HashMap<GameId, Game>;
+
 const fn empty_board() -> Board {
     [Slot::Empty; SLOT_COUNT]
 }
 
 fn board_positions() -> [Position; SLOT_COUNT] {
-    let init_pos = Position {
-        x: 0,
-        y: 0,
-    };
+    let init_pos = Position { x: 0, y: 0 };
 
     let mut positions = [init_pos; SLOT_COUNT];
 
-    for x in  0..HORIZONTAL_SLOT_COUNT {
+    for x in 0..HORIZONTAL_SLOT_COUNT {
         for y in 0..VERTICAL_SLOT_COUNT {
-            let pos = Position {
-                x,
-                y,
-            };
+            let pos = Position { x, y };
 
             positions[pos.translate()] = pos;
         }
@@ -249,7 +304,7 @@ fn column_positions(x: Column) -> [Position; VERTICAL_SLOT_COUNT] {
     let mut indexes = [Position { x: 0, y: 0 }; VERTICAL_SLOT_COUNT];
 
     for y in 0..VERTICAL_SLOT_COUNT {
-        indexes[y] = Position {x, y};
+        indexes[y] = Position { x, y };
     }
 
     indexes
@@ -298,16 +353,19 @@ fn test_no_winner_empty_board() {
 #[test]
 fn test_detect_win_condition_horizontal() {
     let mut events = Vec::new();
+    let game = 0;
 
     for column in 0..4 {
         events.push(TokenPlaced {
-           token: Token::Red,
+            game,
+            token: Token::Red,
             column,
             created: Utc::now(),
         });
 
         if column != 3 {
             events.push(TokenPlaced {
+                game,
                 token: Token::Yellow,
                 column,
                 created: Utc::now(),
@@ -336,9 +394,11 @@ fn test_detect_win_condition_horizontal() {
 #[test]
 fn test_detect_win_condition_vertical() {
     let mut events = Vec::new();
+    let game = 0;
 
     for round in 0..4 {
         events.push(TokenPlaced {
+            game,
             token: Token::Red,
             column: 0,
             created: Utc::now(),
@@ -346,6 +406,7 @@ fn test_detect_win_condition_vertical() {
 
         if round != 3 {
             events.push(TokenPlaced {
+                game,
                 token: Token::Yellow,
                 column: 1,
                 created: Utc::now(),

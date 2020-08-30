@@ -296,7 +296,7 @@ fn test_no_winner_empty_board() {
 }
 
 #[test]
-fn test_detect_win_condition() {
+fn test_detect_win_condition_horizontal() {
     let mut events = Vec::new();
 
     for column in 0..4 {
@@ -310,6 +310,44 @@ fn test_detect_win_condition() {
             events.push(TokenPlaced {
                 token: Token::Yellow,
                 column,
+                created: Utc::now(),
+            });
+        }
+    }
+
+    let mut board = empty_board();
+    let player1 = Player {
+        token: Token::Red,
+        name: "1".to_string(),
+    };
+
+    let player2 = Player {
+        token: Token::Yellow,
+        name: "2".to_string(),
+    };
+
+    for event in events.iter() {
+        project_board(&mut board, event);
+    }
+
+    debug_assert_eq!(Some(&player1), check_game_over(&board, &player1, &player2));
+}
+
+#[test]
+fn test_detect_win_condition_vertical() {
+    let mut events = Vec::new();
+
+    for round in 0..4 {
+        events.push(TokenPlaced {
+            token: Token::Red,
+            column: 0,
+            created: Utc::now(),
+        });
+
+        if round != 3 {
+            events.push(TokenPlaced {
+                token: Token::Yellow,
+                column: 1,
                 created: Utc::now(),
             });
         }

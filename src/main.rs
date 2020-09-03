@@ -4,6 +4,7 @@ extern crate serde_derive;
 
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use std::error::Error;
 
 const HORIZONTAL_SLOT_COUNT: usize = 7;
 const VERTICAL_SLOT_COUNT: usize = 6;
@@ -41,6 +42,11 @@ struct TokenPlaced {
 /*********************************************/
 /*** Commands                                */
 /*********************************************/
+enum GameCommands {
+    CreateGame(CreateGame),
+    PlaceToken(PlaceToken),
+}
+
 struct CreateGame {
     player1: Player,
     player2: Player,
@@ -48,6 +54,7 @@ struct CreateGame {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PlaceToken {
+    game: GameId,
     player: Player,
     column: usize,
 }
@@ -56,7 +63,7 @@ struct PlaceToken {
 /*********************************************/
 /*** Validators                              */
 /*********************************************/
-fn is_valid_move(board: &Board, action: PlaceToken) -> bool {
+fn is_valid_move(board: &Board, action: &PlaceToken) -> bool {
     for pos in column_positions(action.column).iter() {
         let idx = pos.translate();
 
@@ -68,7 +75,7 @@ fn is_valid_move(board: &Board, action: PlaceToken) -> bool {
     false
 }
 
-fn can_create_game(games: &Games, command: CreateGame) -> bool {
+fn can_create_game(games: &Games, command: &CreateGame) -> bool {
     for game in games.values() {
         if game.player1.name == command.player1.name
             || game.player1.name == command.player2.name
@@ -432,7 +439,46 @@ fn test_detect_win_condition_vertical() {
     debug_assert_eq!(Some(&player1), check_game_over(&board, &player1, &player2));
 }
 
-fn main() {
+fn command_processing(games: &Games, cmd: GameCommands) -> Option<GameEvents> {
+    match cmd {
+        GameCommands::CreateGame(params) => {
+            if can_create_game(games, &params) {
+                let id = games.len();
+                return Some(GameEvents::GameCreated(GameCreated {
+                    id,
+                    player1: params.player1.clone(),
+                    player2: params.player2.clone(),
+                    created: Utc::now(),
+                }));
+            }
+        }
+
+        GameCommands::PlaceToken(params) => {
+            if let Some(game) = games.get(&params.game) {
+                if is_valid_move(&game.board, &params) {
+                    return Some(GameEvents::TokenPlaced(TokenPlaced {
+                        game: params.game,
+                        token: params.player.token,
+                        column: params.column,
+                        created: Utc::now(),
+                    }));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    let uri = format!("https://localhost:2113/").parse()?;
+    let connection = eventstore::es6::connection::Connection::builder()
+        .with_default_user(eventstore::Credentials::new("admin", "changeit"))
+        .disable_server_certificate_validation()
+        .single_node_connection(uri)
+        .await?;
+
     let _board: Board = empty_board();
     let _events: Vec<TokenPlaced> = Vec::new();
 
@@ -441,4 +487,6 @@ fn main() {
     }
 
     println!("Hello, world!");
+
+    Ok(())
 }

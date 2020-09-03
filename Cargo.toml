@@ -11,3 +11,5 @@ chrono = { features = ["serde"] }
 serde = "*"
 serde_json = "*"
 serde_derive = "*"
+eventstore = { version = "0.8.1", features = ["es6"] }
+tokio = { version = "0.2.22", features = ["macros"] }

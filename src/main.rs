@@ -470,6 +470,27 @@ fn command_processing(games: &Games, cmd: GameCommands) -> Option<GameEvents> {
     None
 }
 
+fn event_processing(games: &mut Games, event: &GameEvents) {
+    match event {
+        GameEvents::GameCreated(params) => {
+            let game = Game {
+                id: params.id,
+                player1: params.player1.clone(),
+                player2: params.player2.clone(),
+                board: empty_board(),
+            };
+
+            games.insert(params.id, game);
+        }
+
+        GameEvents::TokenPlaced(params) => {
+            if let Some(game) = games.get_mut(&params.game) {
+                project_board(&mut game.board, params);
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let uri = format!("https://localhost:2113/").parse()?;

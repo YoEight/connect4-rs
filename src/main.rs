@@ -542,19 +542,19 @@ fn event_processing(games: &mut Games, event: &GameEvents) {
 //     let mut games: Games = HashMap::new();
 //     loop {
 //         let cmd = wait_for_game_command();
-//
+
 //         if let Some(event) = command_processing(&games, cmd) {
 //             event_processing(&mut games, &event);
 //             persist_event(&event);
-//
+
 //             if let GameEvents::TokenPlaced(event) = event {
 //                 let game = games.get(&event.game).expect("Guaranteed the game exists");
-//
+
 //                 draw_board(&game.board);
-//
+
 //                 if let Some(player) = game.is_over() {
 //                     notify_winner(player);
-//
+
 //                     break;
 //                 }
 //             }
@@ -562,37 +562,37 @@ fn event_processing(games: &mut Games, event: &GameEvents) {
 //     }
 // }
 
-struct State;
+// struct State;
 
-async fn load_game_events(connection: &Connection) {
-    connection.read_stream("$ce-games".to_string())
-        .start_from_beginning();
-}
+// async fn load_game_events(connection: &Connection) {
+//     connection.read_stream("$ce-games".to_string())
+//         .start_from_beginning();
+// }
 
-struct ItemAdded {
-    id: Uuid,
-    name: String,
-}
+// struct ItemAdded {
+//     id: Uuid,
+//     name: String,
+// }
 
-fn draw_board(board: &Board) {
+// fn draw_board(board: &Board) {
 
-}
+// }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let uri = format!("https://localhost:2113/").parse()?;
-    let connection = eventstore::es6::connection::Connection::builder()
-        .with_default_user(eventstore::Credentials::new("admin", "changeit"))
-        .disable_server_certificate_validation()
-        .single_node_connection(uri)
-        .await?;
+    // let uri = format!("https://localhost:2113/").parse()?;
+    // let connection = eventstore::es6::connection::Connection::builder()
+    //     .with_default_user(eventstore::Credentials::new("admin", "changeit"))
+    //     .disable_server_certificate_validation()
+    //     .single_node_connection(uri)
+    //     .await?;
 
-    let _board: Board = empty_board();
-    let _events: Vec<TokenPlaced> = Vec::new();
+    // let _board: Board = empty_board();
+    // let _events: Vec<TokenPlaced> = Vec::new();
 
-    for pos in board_positions().iter() {
-        println!("({}, {})", pos.x, pos.y);
-    }
+    // for pos in board_positions().iter() {
+    //     println!("({}, {})", pos.x, pos.y);
+    // }
 
     println!("Hello, world!");
 

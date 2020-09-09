@@ -5,6 +5,8 @@ extern crate serde_derive;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::error::Error;
+use eventstore::es6::connection::Connection;
+use eventstore::es6::grpc::event_store::client::shared::Uuid;
 
 const HORIZONTAL_SLOT_COUNT: usize = 7;
 const VERTICAL_SLOT_COUNT: usize = 6;
@@ -77,10 +79,10 @@ fn is_valid_move(board: &Board, action: &PlaceToken) -> bool {
 
 fn can_create_game(games: &Games, command: &CreateGame) -> bool {
     for game in games.values() {
-        if game.player1.name == command.player1.name
+        if game.game_over().is_none() && (game.player1.name == command.player1.name
             || game.player1.name == command.player2.name
             || game.player2.name == command.player1.name
-            || game.player2.name == command.player2.name
+            || game.player2.name == command.player2.name)
         {
             return false;
         }
@@ -281,6 +283,51 @@ struct Game {
     player1: Player,
     player2: Player,
     board: Board,
+}
+
+impl Game {
+    pub fn game_over(&self) -> Option<&Player> {
+        for pos in board_positions().iter() {
+            let slot = self.board[pos.translate()];
+
+            match slot {
+                Slot::Empty => continue,
+                Slot::Occupied(token) => {
+                    let on_right_line = pos.x + 3 < HORIZONTAL_SLOT_COUNT
+                        && self.board[pos.add_x(1).translate()] == slot
+                        && self.board[pos.add_x(2).translate()] == slot
+                        && self.board[pos.add_x(3).translate()] == slot;
+
+                    let on_top_line = self.board[pos.add_y(1).translate()] == slot
+                        && self.board[pos.add_y(2).translate()] == slot
+                        && self.board[pos.add_y(3).translate()] == slot;
+
+                    let on_up_right_line = pos.x + 3 < HORIZONTAL_SLOT_COUNT
+                        && self.board[pos.add_x(1).add_y(1).translate()] == slot
+                        && self.board[pos.add_x(2).add_y(2).translate()] == slot
+                        && self.board[pos.add_x(3).add_y(3).translate()] == slot;
+
+                    let on_up_left_line = pos.x >= 3
+                        && self.board[pos.sub_x(1).add_y(1).translate()] == slot
+                        && self.board[pos.sub_x(2).add_y(2).translate()] == slot
+                        && self.board[pos.sub_x(3).add_y(3).translate()] == slot;
+
+                    if on_right_line
+                        || (pos.y + 3 < VERTICAL_SLOT_COUNT
+                        && (on_top_line || on_up_right_line || on_up_left_line))
+                    {
+                        if self.player1.token == token {
+                            return Some(&self.player1);
+                        } else {
+                            return Some(&self.player2);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
 }
 
 type GameStatues = HashMap<GameId, GameStatus>;
@@ -489,6 +536,46 @@ fn event_processing(games: &mut Games, event: &GameEvents) {
             }
         }
     }
+}
+
+// fn game_loop() {
+//     let mut games: Games = HashMap::new();
+//     loop {
+//         let cmd = wait_for_game_command();
+//
+//         if let Some(event) = command_processing(&games, cmd) {
+//             event_processing(&mut games, &event);
+//             persist_event(&event);
+//
+//             if let GameEvents::TokenPlaced(event) = event {
+//                 let game = games.get(&event.game).expect("Guaranteed the game exists");
+//
+//                 draw_board(&game.board);
+//
+//                 if let Some(player) = game.is_over() {
+//                     notify_winner(player);
+//
+//                     break;
+//                 }
+//             }
+//         }
+//     }
+// }
+
+struct State;
+
+async fn load_game_events(connection: &Connection) {
+    connection.read_stream("$ce-games".to_string())
+        .start_from_beginning();
+}
+
+struct ItemAdded {
+    id: Uuid,
+    name: String,
+}
+
+fn draw_board(board: &Board) {
+
 }
 
 #[tokio::main]
